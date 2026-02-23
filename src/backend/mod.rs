@@ -2,6 +2,40 @@ pub mod docker;
 pub mod health;
 pub mod native;
 
+use crate::orchestration::service::ResolvedService;
+use crate::orchestration::services::Service;
+
+#[derive(Debug, Clone)]
+pub enum ServiceHandle {
+    Docker { container_id: String },
+    Native { pid: u32 },
+}
+
+pub trait Backend: Send + Sync {
+    fn install(
+        &self,
+        service: &dyn Service,
+    ) -> impl std::future::Future<Output = Result<(), BackendError>> + Send;
+
+    fn start(
+        &self,
+        service: &dyn Service,
+        resolved: &ResolvedService,
+    ) -> impl std::future::Future<Output = Result<ServiceHandle, BackendError>> + Send;
+
+    fn stop(
+        &self,
+        handle: &ServiceHandle,
+    ) -> impl std::future::Future<Output = Result<(), BackendError>> + Send;
+
+    fn is_running(
+        &self,
+        handle: &ServiceHandle,
+    ) -> impl std::future::Future<Output = Result<bool, BackendError>> + Send;
+
+    fn backend_type(&self) -> &'static str;
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum BackendError {
     #[error("Docker daemon is not running. Start Docker and try again.")]
