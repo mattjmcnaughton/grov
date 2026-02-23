@@ -36,7 +36,7 @@ impl Service for Minio {
         HashMap::from([
             (
                 "MINIO_ENDPOINT".to_string(),
-                "http://localhost:{port}".to_string(),
+                "http://localhost:{{ port }}".to_string(),
             ),
             ("AWS_ACCESS_KEY_ID".to_string(), "minioadmin".to_string()),
             (

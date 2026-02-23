@@ -33,13 +33,14 @@ impl Service for Postgres {
         HashMap::from([
             (
                 "DATABASE_URL".to_string(),
-                "postgresql://{username}:{password}@localhost:{port}/{database}".to_string(),
+                "postgresql://{{ username }}:{{ password }}@localhost:{{ port }}/{{ database }}"
+                    .to_string(),
             ),
             ("PGHOST".to_string(), "localhost".to_string()),
-            ("PGPORT".to_string(), "{port}".to_string()),
-            ("PGUSER".to_string(), "{username}".to_string()),
-            ("PGPASSWORD".to_string(), "{password}".to_string()),
-            ("PGDATABASE".to_string(), "{database}".to_string()),
+            ("PGPORT".to_string(), "{{ port }}".to_string()),
+            ("PGUSER".to_string(), "{{ username }}".to_string()),
+            ("PGPASSWORD".to_string(), "{{ password }}".to_string()),
+            ("PGDATABASE".to_string(), "{{ database }}".to_string()),
         ])
     }
 
@@ -112,10 +113,10 @@ mod tests {
     fn postgres_env_template_has_placeholders() {
         let pg = Postgres;
         let db_url = &pg.env_template()["DATABASE_URL"];
-        assert!(db_url.contains("{username}"));
-        assert!(db_url.contains("{password}"));
-        assert!(db_url.contains("{port}"));
-        assert!(db_url.contains("{database}"));
+        assert!(db_url.contains("{{ username }}"));
+        assert!(db_url.contains("{{ password }}"));
+        assert!(db_url.contains("{{ port }}"));
+        assert!(db_url.contains("{{ database }}"));
     }
 
     #[test]
