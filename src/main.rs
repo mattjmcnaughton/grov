@@ -1,14 +1,6 @@
 use clap::Parser;
+use grov::cli::Cli;
 use tracing_subscriber::EnvFilter;
-
-/// grov: dev workspace services
-#[derive(Parser)]
-#[command(name = "grov", version, about)]
-struct Cli {
-    /// Increase log verbosity (-v for info, -vv for debug)
-    #[arg(short, long, action = clap::ArgAction::Count, global = true)]
-    verbose: u8,
-}
 
 fn init_tracing(verbosity: u8) {
     let default_level = match verbosity {
@@ -31,4 +23,5 @@ fn main() {
     init_tracing(cli.verbose);
 
     tracing::debug!("grov starting with verbosity level {}", cli.verbose);
+    tracing::debug!("command: {:?}", cli.command);
 }
