@@ -1597,14 +1597,11 @@ Wave 2 [up to 8 parallel agents]:
   T-011  Env variable template rendering                [S]
   T-012  Error type hierarchy                           [S]
 
-Wave 3 [up to 7 parallel agents]:
-  T-004  GitHub Actions CI pipeline                     [M]  ← after T-003
-  T-005  Git pre-commit hook                            [XS] ← after T-003
+Wave 3 [up to 4 parallel agents]:
   T-008  StateManager (atomic writes, file locking)     [M]  ← after T-007
   T-013  Backend trait and ServiceHandle enum            [S]  ← after T-009, T-012
   T-015  Health check (TCP connect polling)             [S]  ← after T-012
   T-016  CLI argument parsing (clap derive)             [S]  ← after T-002, T-012
-  T-025  Concurrent state access safety test            [S]  ← after T-008
 
 Wave 4 [2 parallel agents]:
   T-014  Docker backend (DockerBackend)                 [L]  ← after T-013
@@ -1625,6 +1622,11 @@ Wave 7 [up to 3 parallel agents]:
   T-021  End-to-end Docker lifecycle tests              [L]  ← after T-017, T-018, T-019
   T-026  Cross-grove isolation E2E test                 [M]  ← after T-021
   T-027  Data persistence E2E test                      [M]  ← after T-021
+
+Wave 8 [cleanup — up to 3 parallel agents]:
+  T-004  GitHub Actions CI pipeline                     [M]  ← after T-003
+  T-005  Git pre-commit hook                            [XS] ← after T-003
+  T-025  Concurrent state access safety test            [S]  ← after T-008
 ```
 
 **Critical path**: T-001 → T-009 → T-013 → T-014 → T-017 → T-018 → T-021

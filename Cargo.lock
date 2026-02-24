@@ -523,6 +523,7 @@ dependencies = [
  "clap",
  "directories",
  "fs2",
+ "futures-util",
  "minijinja",
  "predicates",
  "serde",
