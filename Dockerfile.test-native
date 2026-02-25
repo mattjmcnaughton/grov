@@ -1,0 +1,25 @@
+FROM rust:1-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/usr/lib/postgresql/15/bin:${PATH}"
+
+RUN curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio \
+    && chmod +x /usr/local/bin/minio
+
+RUN useradd -m -s /bin/bash testuser
+
+WORKDIR /app
+
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && echo "" > src/lib.rs && cargo fetch && rm -rf src
+
+# Ensure the non-root user owns the cargo registry cache
+RUN cp -r /usr/local/cargo /home/testuser/.cargo \
+    && chown -R testuser:testuser /home/testuser/.cargo
+ENV CARGO_HOME="/home/testuser/.cargo"
+
+USER testuser

@@ -37,6 +37,7 @@ mod tests {
     #[test]
     fn port_is_released_after_allocation() {
         let port = allocate().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(50));
         let listener = TcpListener::bind(format!("127.0.0.1:{port}"));
         assert!(
             listener.is_ok(),
