@@ -53,19 +53,17 @@ impl Service for Postgres {
     }
 
     fn native_binary(&self) -> Option<&str> {
-        Some("pg_ctl")
+        Some("postgres")
     }
 
     fn native_args(&self, resolved: &ResolvedService) -> Vec<String> {
-        let data_dir = resolved.data_dir.to_string_lossy();
         vec![
             "-D".to_string(),
-            data_dir.to_string(),
-            "-l".to_string(),
-            format!("{data_dir}/logfile"),
-            "-o".to_string(),
-            format!("-p {} -k /tmp", resolved.allocated_port),
-            "start".to_string(),
+            resolved.data_dir.to_string_lossy().to_string(),
+            "-p".to_string(),
+            resolved.allocated_port.to_string(),
+            "-k".to_string(),
+            "/tmp".to_string(),
         ]
     }
 
@@ -131,6 +129,19 @@ mod tests {
     #[test]
     fn postgres_native_binary() {
         let pg = Postgres;
-        assert_eq!(pg.native_binary(), Some("pg_ctl"));
+        assert_eq!(pg.native_binary(), Some("postgres"));
+    }
+
+    #[test]
+    fn postgres_native_args_correctness() {
+        let pg = Postgres;
+        let resolved = ResolvedService {
+            grove_id: "test".to_string(),
+            allocated_port: 5432,
+            data_dir: "/tmp/pgdata".into(),
+            resolved_env: HashMap::new(),
+        };
+        let args = pg.native_args(&resolved);
+        assert_eq!(args, vec!["-D", "/tmp/pgdata", "-p", "5432", "-k", "/tmp"]);
     }
 }

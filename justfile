@@ -16,9 +16,19 @@ gate:
     cargo clippy -- -D warnings
     cargo test --lib
 
-# Expensive gate: gate + integration/e2e tests (no external deps)
+# Build the Docker image for native integration tests
+build-test-native:
+    docker build -f Dockerfile.test-native -t grov-test-native .
+
+# Run native backend integration tests in a Linux container
+test-native: build-test-native
+    docker run --rm -v {{justfile_directory()}}:/app -w /app grov-test-native \
+        cargo test --test native_backend --features integration-tests
+
+# Expensive gate: gate + integration/e2e tests
 gate-expensive: gate
     cargo test --test '*' --features integration-tests
+    just test-native
 
 # External gate: tests requiring external components (Docker, filesystem, network)
 gate-external: gate-expensive
