@@ -5,6 +5,8 @@ pub mod service;
 pub mod services;
 
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{SecondsFormat, Utc};
 use tracing::{debug, info, warn};
@@ -89,14 +91,16 @@ pub struct Orchestrator<B: Backend> {
     backend: B,
     state_manager: StateManager,
     services: Vec<Box<dyn Service>>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl<B: Backend> Orchestrator<B> {
-    pub fn new(backend: B, state_manager: StateManager) -> Self {
+    pub fn new(backend: B, state_manager: StateManager, shutdown: Arc<AtomicBool>) -> Self {
         Self {
             backend,
             state_manager,
             services: services::builtin_services(),
+            shutdown,
         }
     }
 
@@ -129,6 +133,10 @@ impl<B: Backend> Orchestrator<B> {
         let grove_id = self.state_manager.load_state()?.grove_id.clone();
 
         for name in service_names {
+            if self.shutdown.load(Ordering::Relaxed) {
+                return Err(GrovError::Interrupted);
+            }
+
             let service = self.find_service(name)?;
 
             // Check if already running via saved state
@@ -417,7 +425,7 @@ mod tests {
         backend: MockBackend,
         state_manager: StateManager,
     ) -> Orchestrator<MockBackend> {
-        Orchestrator::new(backend, state_manager)
+        Orchestrator::new(backend, state_manager, Arc::new(AtomicBool::new(false)))
     }
 
     fn temp_state_manager() -> (tempfile::TempDir, StateManager) {
@@ -563,6 +571,21 @@ mod tests {
         assert!(matches!(result, Err(GrovError::UnknownService { .. })));
 
         // Nothing was started because validation is upfront
+        let started = backend.started.lock().unwrap();
+        assert!(started.is_empty());
+    }
+
+    #[tokio::test]
+    async fn up_stops_on_shutdown_signal() {
+        let (_tmp, mgr) = temp_state_manager();
+        let backend = MockBackend::new().with_listener();
+        let shutdown = Arc::new(AtomicBool::new(true));
+        let orch = Orchestrator::new(backend.clone(), mgr, shutdown);
+
+        let result = orch.up(&["postgres".to_string()]).await;
+        assert!(matches!(result, Err(GrovError::Interrupted)));
+
+        // Nothing was started because shutdown was already set
         let started = backend.started.lock().unwrap();
         assert!(started.is_empty());
     }
