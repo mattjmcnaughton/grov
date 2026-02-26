@@ -109,8 +109,13 @@ impl<B: Backend> Orchestrator<B> {
             .iter()
             .find(|s| s.name() == name)
             .map(|s| s.as_ref())
-            .ok_or_else(|| GrovError::UnknownService {
-                name: name.to_string(),
+            .ok_or_else(|| {
+                let mut names: Vec<&str> = self.services.iter().map(|s| s.name()).collect();
+                names.sort();
+                GrovError::UnknownService {
+                    name: name.to_string(),
+                    available: names.join(", "),
+                }
             })
     }
 
@@ -493,7 +498,7 @@ mod tests {
         let orch = make_orchestrator(MockBackend::new(), mgr);
         let result = orch.find_service("nonexistent");
         match result {
-            Err(GrovError::UnknownService { name }) => assert_eq!(name, "nonexistent"),
+            Err(GrovError::UnknownService { name, .. }) => assert_eq!(name, "nonexistent"),
             Err(other) => panic!("expected UnknownService, got: {other:?}"),
             Ok(_) => panic!("expected error, got Ok"),
         }
@@ -507,6 +512,18 @@ mod tests {
         assert_eq!(svc.name(), "postgres");
         let svc = orch.find_service("minio").unwrap();
         assert_eq!(svc.name(), "minio");
+    }
+
+    #[test]
+    fn find_service_lists_available_services() {
+        let (_tmp, mgr) = temp_state_manager();
+        let orch = make_orchestrator(MockBackend::new(), mgr);
+        match orch.find_service("postgre") {
+            Err(GrovError::UnknownService { available, .. }) => {
+                assert_eq!(available, "minio, postgres");
+            }
+            _ => panic!("expected UnknownService with available list"),
+        }
     }
 
     // --- Tests: install ---
