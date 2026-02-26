@@ -279,8 +279,16 @@ impl<B: Backend> Orchestrator<B> {
         names.sort();
 
         let mut entries = Vec::new();
+        let mut stale_names = Vec::new();
         for name in names {
             let svc_state = &state.services[name];
+            let handle: ServiceHandle = svc_state.handle.clone().into();
+            if !self.backend.is_running(&handle).await? {
+                debug!(service = name, "skipping dead service in env output");
+                stale_names.push(name.clone());
+                continue;
+            }
+
             let service = self.find_service(name)?;
             let rendered = render_service_env(service, svc_state.port).map_err(|e| {
                 GrovError::Backend(BackendError::StartFailed {
@@ -299,6 +307,16 @@ impl<B: Backend> Orchestrator<B> {
             }
         }
 
+        if !stale_names.is_empty() {
+            self.state_manager.with_lock(|grove_state| {
+                for name in &stale_names {
+                    debug!(service = name, "removing stale state from env");
+                    grove_state.services.remove(name);
+                }
+                Ok(())
+            })?;
+        }
+
         Ok(entries)
     }
 
@@ -312,10 +330,14 @@ impl<B: Backend> Orchestrator<B> {
         names.sort();
 
         let mut statuses = Vec::new();
+        let mut stale_names = Vec::new();
         for name in names {
             let svc_state = &state.services[name];
             let handle: ServiceHandle = svc_state.handle.clone().into();
             let running = self.backend.is_running(&handle).await?;
+            if !running {
+                stale_names.push(name.clone());
+            }
             statuses.push(ServiceStatus {
                 name: name.clone(),
                 backend: svc_state.backend_type.clone(),
@@ -326,6 +348,16 @@ impl<B: Backend> Orchestrator<B> {
                 },
                 port: svc_state.port,
             });
+        }
+
+        if !stale_names.is_empty() {
+            self.state_manager.with_lock(|grove_state| {
+                for name in &stale_names {
+                    debug!(service = name, "removing stale state from status");
+                    grove_state.services.remove(name);
+                }
+                Ok(())
+            })?;
         }
 
         Ok(statuses)
@@ -717,7 +749,7 @@ mod tests {
     async fn env_returns_rendered_variables_for_running_service() {
         let (_tmp, mgr) = temp_state_manager();
         seed_service_state(&mgr, "postgres", 54321);
-        let orch = make_orchestrator(MockBackend::new(), mgr);
+        let orch = make_orchestrator(MockBackend::new().with_is_running(true), mgr);
         let entries = orch.env().await.unwrap();
 
         let find = |k: &str| {
@@ -738,7 +770,7 @@ mod tests {
         let (_tmp, mgr) = temp_state_manager();
         seed_service_state(&mgr, "postgres", 54321);
         seed_service_state(&mgr, "minio", 9001);
-        let orch = make_orchestrator(MockBackend::new(), mgr);
+        let orch = make_orchestrator(MockBackend::new().with_is_running(true), mgr);
         let entries = orch.env().await.unwrap();
 
         // postgres has 6 env vars, minio has 3 => 9 total
@@ -763,9 +795,24 @@ mod tests {
     async fn env_returns_error_for_unknown_service_in_state() {
         let (_tmp, mgr) = temp_state_manager();
         seed_service_state(&mgr, "nonexistent", 12345);
-        let orch = make_orchestrator(MockBackend::new(), mgr);
+        let orch = make_orchestrator(MockBackend::new().with_is_running(true), mgr);
         let result = orch.env().await;
         assert!(matches!(result, Err(GrovError::UnknownService { .. })));
+    }
+
+    #[tokio::test]
+    async fn env_skips_dead_services_and_cleans_state() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "postgres", 54321);
+        let orch = make_orchestrator(MockBackend::new().with_is_running(false), mgr);
+        let entries = orch.env().await.unwrap();
+
+        // Dead service is skipped — no env entries
+        assert!(entries.is_empty());
+
+        // State was cleaned
+        let state = orch.state_manager.load_state().unwrap();
+        assert!(!state.services.contains_key("postgres"));
     }
 
     // --- Tests: status ---
@@ -814,6 +861,22 @@ mod tests {
         assert_eq!(statuses.len(), 2);
         assert_eq!(statuses[0].name, "minio");
         assert_eq!(statuses[1].name, "postgres");
+    }
+
+    #[tokio::test]
+    async fn status_cleans_stale_state_for_dead_services() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "postgres", 54321);
+        let orch = make_orchestrator(MockBackend::new().with_is_running(false), mgr);
+        let statuses = orch.status().await.unwrap();
+
+        // Dead service is reported as Stopped this one time
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].status, ServiceRunState::Stopped);
+
+        // State was cleaned
+        let state = orch.state_manager.load_state().unwrap();
+        assert!(!state.services.contains_key("postgres"));
     }
 
     #[test]
