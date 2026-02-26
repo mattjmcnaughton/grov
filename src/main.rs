@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 use clap::Parser;
+use grov::GrovError;
 use grov::backend::Backend;
 use grov::backend::docker::DockerBackend;
 use grov::backend::native::NativeBackend;
@@ -29,7 +30,7 @@ fn init_tracing(verbosity: u8) {
 async fn dispatch<B: Backend>(
     orchestrator: Orchestrator<B>,
     command: Commands,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), GrovError> {
     match command {
         Commands::Install { services } => {
             orchestrator.install(&services).await?;
@@ -80,8 +81,8 @@ async fn dispatch<B: Backend>(
     Ok(())
 }
 
-async fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
-    let grove_id = grove::resolve()?;
+async fn run(command: Commands) -> Result<(), GrovError> {
+    let grove_id = grove::resolve().map_err(|e| GrovError::Internal(e.to_string()))?;
     tracing::debug!(grove_id = %grove_id, "resolved grove ID");
 
     let state_manager = StateManager::new(&grove_id)?;
@@ -100,9 +101,23 @@ async fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+fn exit_code_for(err: &GrovError) -> u8 {
+    match err {
+        GrovError::UnknownService { .. } => 2,
+        _ => 1,
+    }
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            let _ = e.print();
+            let code = if e.use_stderr() { 2 } else { 0 };
+            return ExitCode::from(code);
+        }
+    };
     init_tracing(cli.verbose);
 
     tracing::debug!("grov starting with verbosity level {}", cli.verbose);
@@ -112,7 +127,43 @@ async fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");
-            ExitCode::FAILURE
+            ExitCode::from(exit_code_for(&e))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use grov::backend::BackendError;
+    use grov::storage::StorageError;
+
+    #[test]
+    fn exit_code_for_unknown_service_is_2() {
+        let err = GrovError::UnknownService {
+            name: "foo".to_string(),
+        };
+        assert_eq!(exit_code_for(&err), 2);
+    }
+
+    #[test]
+    fn exit_code_for_backend_error_is_1() {
+        let err = GrovError::Backend(BackendError::DockerUnavailable);
+        assert_eq!(exit_code_for(&err), 1);
+    }
+
+    #[test]
+    fn exit_code_for_storage_error_is_1() {
+        let err = GrovError::Storage(StorageError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "not found",
+        )));
+        assert_eq!(exit_code_for(&err), 1);
+    }
+
+    #[test]
+    fn exit_code_for_internal_error_is_1() {
+        let err = GrovError::Internal("boom".to_string());
+        assert_eq!(exit_code_for(&err), 1);
     }
 }
