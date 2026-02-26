@@ -1,0 +1,9 @@
+target/
+.git/
+.claude/
+.agentic-wip/
+docs/
+examples/
+tests/
+README.md
+justfile
