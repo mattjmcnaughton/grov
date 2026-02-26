@@ -41,10 +41,40 @@ async fn dispatch<B: Backend>(
             orchestrator.down(services.as_deref()).await?;
         }
         Commands::Env => {
-            eprintln!("env command not yet implemented");
+            let entries = orchestrator.env().await?;
+            for entry in &entries {
+                println!("{}={}", entry.key, entry.value);
+            }
         }
         Commands::Status => {
-            eprintln!("status command not yet implemented");
+            let statuses = orchestrator.status().await?;
+            if statuses.is_empty() {
+                println!("No running services.");
+            } else {
+                let name_w = statuses.iter().map(|s| s.name.len()).max().unwrap().max(7);
+                let backend_w = statuses
+                    .iter()
+                    .map(|s| s.backend.len())
+                    .max()
+                    .unwrap()
+                    .max(7);
+                let status_w = statuses
+                    .iter()
+                    .map(|s| s.status.to_string().len())
+                    .max()
+                    .unwrap()
+                    .max(6);
+                println!(
+                    "{:<name_w$}  {:<backend_w$}  {:<status_w$}  PORT",
+                    "SERVICE", "BACKEND", "STATUS"
+                );
+                for s in &statuses {
+                    println!(
+                        "{:<name_w$}  {:<backend_w$}  {:<status_w$}  {}",
+                        s.name, s.backend, s.status, s.port
+                    );
+                }
+            }
         }
     }
     Ok(())

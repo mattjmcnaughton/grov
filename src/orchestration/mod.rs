@@ -54,6 +54,35 @@ fn render_service_env(service: &dyn Service, port: u16) -> anyhow::Result<HashMa
     Ok(rendered)
 }
 
+// --- Return types ---
+
+pub struct EnvEntry {
+    pub key: String,
+    pub value: String,
+}
+
+pub struct ServiceStatus {
+    pub name: String,
+    pub backend: String,
+    pub status: ServiceRunState,
+    pub port: u16,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ServiceRunState {
+    Running,
+    Stopped,
+}
+
+impl std::fmt::Display for ServiceRunState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServiceRunState::Running => write!(f, "running"),
+            ServiceRunState::Stopped => write!(f, "stopped"),
+        }
+    }
+}
+
 // --- Orchestrator ---
 
 pub struct Orchestrator<B: Backend> {
@@ -230,6 +259,68 @@ impl<B: Backend> Orchestrator<B> {
         }
 
         Ok(())
+    }
+
+    pub async fn env(&self) -> Result<Vec<EnvEntry>, GrovError> {
+        let state = self.state_manager.load_state()?;
+        if state.services.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut names: Vec<&String> = state.services.keys().collect();
+        names.sort();
+
+        let mut entries = Vec::new();
+        for name in names {
+            let svc_state = &state.services[name];
+            let service = self.find_service(name)?;
+            let rendered = render_service_env(service, svc_state.port).map_err(|e| {
+                GrovError::Backend(BackendError::StartFailed {
+                    service: name.to_string(),
+                    reason: e.to_string(),
+                })
+            })?;
+
+            let mut keys: Vec<String> = rendered.keys().cloned().collect();
+            keys.sort();
+            for key in keys {
+                entries.push(EnvEntry {
+                    key: key.clone(),
+                    value: rendered[&key].clone(),
+                });
+            }
+        }
+
+        Ok(entries)
+    }
+
+    pub async fn status(&self) -> Result<Vec<ServiceStatus>, GrovError> {
+        let state = self.state_manager.load_state()?;
+        if state.services.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut names: Vec<&String> = state.services.keys().collect();
+        names.sort();
+
+        let mut statuses = Vec::new();
+        for name in names {
+            let svc_state = &state.services[name];
+            let handle: ServiceHandle = svc_state.handle.clone().into();
+            let running = self.backend.is_running(&handle).await?;
+            statuses.push(ServiceStatus {
+                name: name.clone(),
+                backend: svc_state.backend_type.clone(),
+                status: if running {
+                    ServiceRunState::Running
+                } else {
+                    ServiceRunState::Stopped
+                },
+                port: svc_state.port,
+            });
+        }
+
+        Ok(statuses)
     }
 }
 
@@ -587,5 +678,124 @@ mod tests {
             "postgresql://dev:dev@localhost:54321/myapp_dev"
         );
         assert_eq!(rendered["PGPORT"], "54321");
+    }
+
+    // --- Tests: env ---
+
+    #[tokio::test]
+    async fn env_returns_empty_when_no_services() {
+        let (_tmp, mgr) = temp_state_manager();
+        let orch = make_orchestrator(MockBackend::new(), mgr);
+        let entries = orch.env().await.unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn env_returns_rendered_variables_for_running_service() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "postgres", 54321);
+        let orch = make_orchestrator(MockBackend::new(), mgr);
+        let entries = orch.env().await.unwrap();
+
+        let find = |k: &str| {
+            entries
+                .iter()
+                .find(|e| e.key == k)
+                .map(|e| e.value.as_str())
+        };
+        assert_eq!(
+            find("DATABASE_URL"),
+            Some("postgresql://dev:dev@localhost:54321/myapp_dev")
+        );
+        assert_eq!(find("PGPORT"), Some("54321"));
+    }
+
+    #[tokio::test]
+    async fn env_returns_entries_for_multiple_services_sorted() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "postgres", 54321);
+        seed_service_state(&mgr, "minio", 9001);
+        let orch = make_orchestrator(MockBackend::new(), mgr);
+        let entries = orch.env().await.unwrap();
+
+        // postgres has 6 env vars, minio has 3 => 9 total
+        assert_eq!(entries.len(), 9);
+
+        // minio keys come first (alphabetical by service name)
+        // and within each service, keys are sorted
+        let keys: Vec<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(keys[0], "AWS_ACCESS_KEY_ID");
+        assert_eq!(keys[1], "AWS_SECRET_ACCESS_KEY");
+        assert_eq!(keys[2], "MINIO_ENDPOINT");
+        // then postgres keys, sorted
+        assert_eq!(keys[3], "DATABASE_URL");
+        assert_eq!(keys[4], "PGDATABASE");
+        assert_eq!(keys[5], "PGHOST");
+        assert_eq!(keys[6], "PGPASSWORD");
+        assert_eq!(keys[7], "PGPORT");
+        assert_eq!(keys[8], "PGUSER");
+    }
+
+    #[tokio::test]
+    async fn env_returns_error_for_unknown_service_in_state() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "nonexistent", 12345);
+        let orch = make_orchestrator(MockBackend::new(), mgr);
+        let result = orch.env().await;
+        assert!(matches!(result, Err(GrovError::UnknownService { .. })));
+    }
+
+    // --- Tests: status ---
+
+    #[tokio::test]
+    async fn status_returns_empty_when_no_services() {
+        let (_tmp, mgr) = temp_state_manager();
+        let orch = make_orchestrator(MockBackend::new(), mgr);
+        let statuses = orch.status().await.unwrap();
+        assert!(statuses.is_empty());
+    }
+
+    #[tokio::test]
+    async fn status_returns_running_service() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "postgres", 54321);
+        let orch = make_orchestrator(MockBackend::new().with_is_running(true), mgr);
+        let statuses = orch.status().await.unwrap();
+
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].name, "postgres");
+        assert_eq!(statuses[0].backend, "mock");
+        assert_eq!(statuses[0].status, ServiceRunState::Running);
+        assert_eq!(statuses[0].port, 54321);
+    }
+
+    #[tokio::test]
+    async fn status_returns_stopped_service() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "postgres", 54321);
+        let orch = make_orchestrator(MockBackend::new().with_is_running(false), mgr);
+        let statuses = orch.status().await.unwrap();
+
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].status, ServiceRunState::Stopped);
+    }
+
+    #[tokio::test]
+    async fn status_returns_multiple_services_sorted() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "postgres", 54321);
+        seed_service_state(&mgr, "minio", 9001);
+        let orch = make_orchestrator(MockBackend::new().with_is_running(true), mgr);
+        let statuses = orch.status().await.unwrap();
+
+        assert_eq!(statuses.len(), 2);
+        assert_eq!(statuses[0].name, "minio");
+        assert_eq!(statuses[1].name, "postgres");
+    }
+
+    #[test]
+    fn service_run_state_display() {
+        assert_eq!(ServiceRunState::Running.to_string(), "running");
+        assert_eq!(ServiceRunState::Stopped.to_string(), "stopped");
     }
 }
