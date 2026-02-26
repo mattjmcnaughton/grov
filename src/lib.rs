@@ -19,6 +19,8 @@ pub enum GrovError {
     UnknownService { name: String },
     #[error("service {name} is already running on port {port}")]
     AlreadyRunning { name: String, port: u16 },
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 #[cfg(test)]
@@ -82,6 +84,12 @@ mod tests {
             err.to_string(),
             "backend error: Docker daemon is not running. Start Docker and try again."
         );
+    }
+
+    #[test]
+    fn internal_error_display_message() {
+        let err = GrovError::Internal("something went wrong".to_string());
+        assert_eq!(err.to_string(), "internal error: something went wrong");
     }
 
     #[test]
