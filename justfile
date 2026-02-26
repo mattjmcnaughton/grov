@@ -32,3 +32,12 @@ gate-expensive: gate
 
 # External gate: tests requiring external components (Docker, filesystem, network)
 gate-external: gate-expensive
+
+# Run grov locally (currently uses Docker backend; args passed through)
+run *ARGS: build
+    cargo run -- {{ARGS}}
+
+# Run grov with the native backend inside the Linux test container (args passed through)
+run-native *ARGS: build-test-native
+    docker run --rm -e GROV_BACKEND=native -v {{justfile_directory()}}:/app -w /app grov-test-native \
+        cargo run -- {{ARGS}}

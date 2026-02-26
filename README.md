@@ -427,6 +427,43 @@ See [Supported Services](docs/product/supported-services.md).
 
 ---
 
+## Development
+
+### Running locally
+
+```bash
+just run up postgres minio      # start services (Docker backend)
+just run down                   # stop all services
+just run-native up postgres     # start via native backend inside Linux container
+```
+
+### Demos
+
+Full steel-thread demos that exercise the complete lifecycle (install, up, verify, down, restart):
+
+```bash
+bash examples/demo-docker.sh    # Docker backend on your machine
+bash examples/demo-native.sh    # Native backend inside Linux container
+```
+
+### Backend selection
+
+Set `GROV_BACKEND=native` to use native binaries instead of Docker:
+
+```bash
+GROV_BACKEND=native cargo run -- up postgres
+```
+
+### Quality gates
+
+```bash
+just gate              # fmt + clippy + unit tests
+just gate-expensive    # gate + integration tests
+just test-native       # native backend tests in Linux container
+```
+
+---
+
 ## Notes
 
 - **No root required** — `grov up`, `grov down`, and all other commands never need sudo. The only exception is `grov install --native` on Linux, which may need elevated permissions for system package managers.

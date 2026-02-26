@@ -1,7 +1,9 @@
 use std::process::ExitCode;
 
 use clap::Parser;
+use grov::backend::Backend;
 use grov::backend::docker::DockerBackend;
+use grov::backend::native::NativeBackend;
 use grov::cli::{Cli, Commands};
 use grov::orchestration::Orchestrator;
 use grov::orchestration::grove;
@@ -24,14 +26,10 @@ fn init_tracing(verbosity: u8) {
         .init();
 }
 
-async fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
-    let grove_id = grove::resolve()?;
-    tracing::debug!(grove_id = %grove_id, "resolved grove ID");
-
-    let state_manager = StateManager::new(&grove_id)?;
-    let backend = DockerBackend::new().await?;
-    let orchestrator = Orchestrator::new(backend, state_manager);
-
+async fn dispatch<B: Backend>(
+    orchestrator: Orchestrator<B>,
+    command: Commands,
+) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         Commands::Install { services } => {
             orchestrator.install(&services).await?;
@@ -49,8 +47,27 @@ async fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("status command not yet implemented");
         }
     }
-
     Ok(())
+}
+
+async fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
+    let grove_id = grove::resolve()?;
+    tracing::debug!(grove_id = %grove_id, "resolved grove ID");
+
+    let state_manager = StateManager::new(&grove_id)?;
+
+    let backend_name = std::env::var("GROV_BACKEND").unwrap_or_else(|_| "docker".to_string());
+    match backend_name.as_str() {
+        "native" => {
+            let orchestrator = Orchestrator::new(NativeBackend, state_manager);
+            dispatch(orchestrator, command).await
+        }
+        _ => {
+            let backend = DockerBackend::new().await?;
+            let orchestrator = Orchestrator::new(backend, state_manager);
+            dispatch(orchestrator, command).await
+        }
+    }
 }
 
 #[tokio::main]
