@@ -50,7 +50,7 @@ impl StateManager {
     }
 
     #[cfg(test)]
-    fn with_path(store_path: PathBuf, grove_id: &str) -> Result<Self, StorageError> {
+    pub(crate) fn with_path(store_path: PathBuf, grove_id: &str) -> Result<Self, StorageError> {
         fs::create_dir_all(&store_path)?;
         Ok(Self {
             store_path,
