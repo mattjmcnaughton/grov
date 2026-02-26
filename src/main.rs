@@ -1,4 +1,6 @@
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use clap::Parser;
 use grov::GrovError;
@@ -87,15 +89,23 @@ async fn run(command: Commands) -> Result<(), GrovError> {
 
     let state_manager = StateManager::new(&grove_id)?;
 
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_flag = shutdown.clone();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            shutdown_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    });
+
     let backend_name = std::env::var("GROV_BACKEND").unwrap_or_else(|_| "docker".to_string());
     match backend_name.as_str() {
         "native" => {
-            let orchestrator = Orchestrator::new(NativeBackend, state_manager);
+            let orchestrator = Orchestrator::new(NativeBackend, state_manager, shutdown);
             dispatch(orchestrator, command).await
         }
         _ => {
             let backend = DockerBackend::new().await?;
-            let orchestrator = Orchestrator::new(backend, state_manager);
+            let orchestrator = Orchestrator::new(backend, state_manager, shutdown);
             dispatch(orchestrator, command).await
         }
     }
@@ -104,6 +114,7 @@ async fn run(command: Commands) -> Result<(), GrovError> {
 fn exit_code_for(err: &GrovError) -> u8 {
     match err {
         GrovError::UnknownService { .. } => 2,
+        GrovError::Interrupted => 130,
         _ => 1,
     }
 }
@@ -125,6 +136,7 @@ async fn main() -> ExitCode {
 
     match run(cli.command).await {
         Ok(()) => ExitCode::SUCCESS,
+        Err(ref e @ GrovError::Interrupted) => ExitCode::from(exit_code_for(e)),
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::from(exit_code_for(&e))
@@ -165,5 +177,11 @@ mod tests {
     fn exit_code_for_internal_error_is_1() {
         let err = GrovError::Internal("boom".to_string());
         assert_eq!(exit_code_for(&err), 1);
+    }
+
+    #[test]
+    fn exit_code_for_interrupted_is_130() {
+        let err = GrovError::Interrupted;
+        assert_eq!(exit_code_for(&err), 130);
     }
 }

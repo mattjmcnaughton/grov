@@ -21,6 +21,8 @@ pub enum GrovError {
     AlreadyRunning { name: String, port: u16 },
     #[error("internal error: {0}")]
     Internal(String),
+    #[error("interrupted")]
+    Interrupted,
 }
 
 #[cfg(test)]
@@ -90,6 +92,12 @@ mod tests {
     fn internal_error_display_message() {
         let err = GrovError::Internal("something went wrong".to_string());
         assert_eq!(err.to_string(), "internal error: something went wrong");
+    }
+
+    #[test]
+    fn interrupted_display_message() {
+        let err = GrovError::Interrupted;
+        assert_eq!(err.to_string(), "interrupted");
     }
 
     #[test]
