@@ -554,7 +554,7 @@ Example `state.json`:
 
 | Category | Example | Handling Strategy | User Impact |
 |----------|---------|-------------------|-------------|
-| Validation | Unknown service name "postgre" | Return immediately with suggestion ("did you mean postgres?") | Clear error message, no side effects |
+| Validation | Unknown service name "postgre" | Return immediately with list of available services | Clear error message, no side effects |
 | Configuration | Docker not running | Detect during backend construction, fail fast with actionable message | "Docker daemon is not running. Start Docker and try again." |
 | Transient | Port allocated but taken before bind | Fail the current operation. User retries and gets a different port. | "Port 54321 is unavailable. Run `grov up` again to allocate a new port." |
 | Infrastructure | Disk full when creating data dir | Fail with OS error context | "Failed to create data directory: No space left on device" |
@@ -916,7 +916,7 @@ The `integration-tests` feature gates all tests in `tests/` that require Docker 
 - Idempotency enforcement in Orchestrator (grov up when already running returns success)
 - Stale state detection (verify handles via is_running on status/env/up, update state if dead)
 - Concurrent state access test (two processes running grov up simultaneously for same grove)
-- Error messages for common failure modes (Docker not running, port taken, binary not found, unknown service with suggestion)
+- Error messages for common failure modes (Docker not running, port taken, binary not found, unknown service with available services list)
 - Cross-grove isolation end-to-end test (two groves, same service, simultaneous)
 - Deliverable: production-quality steel thread
 

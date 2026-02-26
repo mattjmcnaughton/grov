@@ -154,6 +154,7 @@ mod tests {
     fn exit_code_for_unknown_service_is_2() {
         let err = GrovError::UnknownService {
             name: "foo".to_string(),
+            available: String::new(),
         };
         assert_eq!(exit_code_for(&err), 2);
     }

@@ -15,8 +15,8 @@ pub enum GrovError {
     Storage(#[from] StorageError),
     #[error("health check failed: {0}")]
     HealthCheck(#[from] HealthCheckError),
-    #[error("unknown service: {name}")]
-    UnknownService { name: String },
+    #[error("unknown service: {name}. Available services: {available}")]
+    UnknownService { name: String, available: String },
     #[error("service {name} is already running on port {port}")]
     AlreadyRunning { name: String, port: u16 },
     #[error("internal error: {0}")]
@@ -63,8 +63,12 @@ mod tests {
     fn unknown_service_display_message() {
         let err = GrovError::UnknownService {
             name: "postgre".to_string(),
+            available: "minio, postgres".to_string(),
         };
-        assert_eq!(err.to_string(), "unknown service: postgre");
+        assert_eq!(
+            err.to_string(),
+            "unknown service: postgre. Available services: minio, postgres"
+        );
     }
 
     #[test]

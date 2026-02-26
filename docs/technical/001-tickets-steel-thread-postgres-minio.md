@@ -1281,11 +1281,11 @@ The TDD defines 6 phases (Phase 0 through Phase 5). Tickets are organized by pha
 **Scope**:
 - Docker not running: "Docker daemon is not running. Start Docker and try again."
 - Port unavailable: "Port {port} is unavailable. Run `grov up` again to allocate a new port."
-- Unknown service with suggestion: "Unknown service: 'postgre'. Did you mean 'postgres'?"
+- Unknown service: "Unknown service: 'postgre'. Available services: minio, postgres"
 - Health check timeout: "{service} failed to become healthy within 60 seconds"
 - Native binary not found: "{binary} not found. Install it and ensure it is in PATH."
 - Disk full: "Failed to create data directory: {os_error}"
-- Implement simple Levenshtein distance or substring matching for "did you mean?" suggestions
+- List all available services when an unknown service name is provided
 
 **Acceptance Criteria**:
 
@@ -1295,10 +1295,10 @@ The TDD defines 6 phases (Phase 0 through Phase 5). Tickets are organized by pha
 - Then stderr shows "Docker daemon is not running. Start Docker and try again."
 - And exit code is 1
 
-**Deliverable 2: Unknown service suggestion**
+**Deliverable 2: Unknown service lists available services**
 - Given the user runs `grov up postgre`
 - When the service name is validated
-- Then the error message includes 'Did you mean "postgres"?'
+- Then the error message lists all available services
 
 **Deliverable 3: Health check timeout message**
 - Given a service fails to become healthy
@@ -1306,7 +1306,7 @@ The TDD defines 6 phases (Phase 0 through Phase 5). Tickets are organized by pha
 - Then stderr shows "postgres failed to become healthy within 60 seconds"
 
 **Testing Requirements**:
-- Unit tests for suggestion matching logic
+- Unit tests for unknown service error message with available services list
 - E2E tests for error message output on common failures
 
 **Out of Scope**:
@@ -1315,7 +1315,7 @@ The TDD defines 6 phases (Phase 0 through Phase 5). Tickets are organized by pha
 
 **Technical Notes**:
 - Reference TDD "Error Categories" table for exact messages
-- Suggestion matching: compare against `builtin_services()` names using edit distance or simple contains check
+- List available services from `builtin_services()` in the error message
 
 **Dependencies**: T-017, T-012
 
