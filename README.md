@@ -416,14 +416,14 @@ clean:
 
 ## Supported Services
 
-| Service | Docker | Native (Linux only) | Notes |
-|---|---|---|---|
-| **PostgreSQL** | ✓ | ✓ | `initdb` for isolated clusters |
-| **Redis** | ✓ | ✓ | `--dir` for data isolation |
-| **MinIO** | ✓ | ✓ | Positional arg for data dir |
-| **DynamoDB Local** | ✓ | ✓ | `-dbPath` + `-sharedDb`, needs JRE |
+See [Supported Services](docs/product/supported-services.md).
 
-Adding new services is composable — any Docker image or binary that accepts a port flag can be configured.
+---
+
+## Documentation
+
+- [Supported Services](docs/product/supported-services.md)
+- [Product Backlog](docs/product/backlog.md)
 
 ---
 
