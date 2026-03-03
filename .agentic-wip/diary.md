@@ -360,3 +360,28 @@ TDD reference: docs/technical/001-tdd-steel-thread-postgres-minio.md
 
 ---
 
+## T-004: GitHub Actions CI + Release pipelines
+**Status**: Completed
+**What was done**:
+- Created .github/workflows/ci.yml with 4-platform matrix (Linux x86_64, Linux ARM64, macOS ARM64, macOS x86_64)
+- CI runs fmt, clippy, unit tests, and release build on all platforms
+- Docker integration tests enabled only on Linux runners (ubuntu-latest, ubuntu-24.04-arm) where Docker is pre-installed
+- Native backend tests enabled only on Linux x86_64 (uses `just test-native` which builds Dockerfile.test-native with amd64 minio binary)
+- ARM runner includes a Docker readiness wait loop for slow-starting Docker daemon
+- fail-fast: false so all matrix jobs complete regardless of individual failures
+- Created .github/workflows/release.yml triggered by successful CI on main via workflow_run
+- Semantic Release job: checkout with full history, setup Node LTS, install semantic-release plugins, run npx semantic-release
+- Build Binaries job: conditional on new release, builds cross-platform binaries (linux-x86_64, macos-x86_64, macos-aarch64), compresses with tar.gz, uploads to GitHub Release via softprops/action-gh-release
+- Created .releaserc.json with semantic-release config: commit-analyzer, release-notes-generator, exec (Cargo.toml version bump + GITHUB_OUTPUT), changelog, git (commits Cargo.toml + CHANGELOG.md), github
+
+**Rationale**:
+- Follows ds-store-no-more patterns for release workflow and .releaserc.json
+- CI matrix covers all target platforms per T-004 spec
+- Native tests restricted to x86_64 Linux because Dockerfile.test-native downloads amd64 minio binary
+- Release workflow uses workflow_run trigger to ensure CI passes before releasing
+
+**Issues/Deviations**:
+- None
+
+---
+
