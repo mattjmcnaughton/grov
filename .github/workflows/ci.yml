@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gate:
+    name: Gate (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            runner: ubuntu-latest
+            docker-tests: true
+            native-tests: true
+          - name: Linux ARM64
+            runner: ubuntu-24.04-arm
+            docker-tests: true
+            native-tests: false
+          - name: macOS ARM64
+            runner: macos-latest
+            docker-tests: false
+            native-tests: false
+          - name: macOS x86_64
+            runner: macos-13
+            docker-tests: false
+            native-tests: false
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check formatting
+        run: cargo fmt -- --check
+      - name: Run linting
+        run: cargo clippy -- -D warnings
+      - name: Run tests
+        run: cargo test --lib
+      - name: Wait for Docker (ARM runners may be slow to start)
+        if: matrix.docker-tests && matrix.runner == 'ubuntu-24.04-arm'
+        run: while ! docker version 2>/dev/null; do sleep 1; done
+      - name: Docker integration tests
+        if: matrix.docker-tests
+        run: cargo test --test '*' --features integration-tests
+      - name: Install just
+        if: matrix.native-tests
+        uses: taiki-e/install-action@just
+      - name: Native backend tests
+        if: matrix.native-tests
+        run: just test-native
+      - name: Release build check
+        run: cargo build --release
