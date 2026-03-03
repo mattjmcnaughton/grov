@@ -28,6 +28,8 @@ which = "7"
 
 [dev-dependencies]
 assert_cmd = "2"
+bollard = "0.18"
 predicates = "3"
 tempfile = "3"
+tokio-postgres = "0.7"
 tokio-test = "0.4"

@@ -29,7 +29,7 @@ impl DockerBackend {
         Ok(Self { client })
     }
 
-    fn create_client() -> Result<Docker, BackendError> {
+    pub fn create_client() -> Result<Docker, BackendError> {
         // Priority 1: DOCKER_HOST env var (e.g., Colima, remote Docker)
         if let Ok(host) = std::env::var("DOCKER_HOST")
             && let Some(path) = host.strip_prefix("unix://")
