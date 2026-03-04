@@ -1,4 +1,4 @@
-#![cfg(all(feature = "integration-tests", target_os = "linux"))]
+#![cfg(all(feature = "native-integration-tests", target_os = "linux"))]
 
 use grov::backend::native::NativeBackend;
 use grov::backend::{Backend, ServiceHandle};

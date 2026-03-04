@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = []
 integration-tests = []
+native-integration-tests = []
 
 [dependencies]
 anyhow = "1"
