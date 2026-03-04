@@ -108,6 +108,16 @@ impl StateManager {
     pub fn store_path(&self) -> &PathBuf {
         &self.store_path
     }
+
+    /// Remove the entire grove store directory (state + data).
+    /// Returns Ok(()) even if the directory does not exist.
+    pub fn remove_grove(&self) -> Result<(), StorageError> {
+        match fs::remove_dir_all(&self.store_path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(StorageError::Io(e)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -244,6 +254,29 @@ mod tests {
         let mgr = StateManager::with_path(tmp.path().to_path_buf(), "test-grove").unwrap();
         let path = mgr.data_dir("postgres");
         assert_eq!(path, tmp.path().join(DATA_DIR).join("postgres"));
+    }
+
+    #[test]
+    fn remove_grove_deletes_store_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mgr = StateManager::with_path(tmp.path().to_path_buf(), "test-grove").unwrap();
+        mgr.ensure_data_dir("postgres").unwrap();
+        assert!(tmp.path().exists());
+        mgr.remove_grove().unwrap();
+        assert!(!tmp.path().exists());
+    }
+
+    #[test]
+    fn remove_grove_succeeds_when_directory_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("nonexistent");
+        // Manually construct — directory doesn't exist, but that's fine for this test
+        let mgr = StateManager {
+            store_path: store.clone(),
+            grove_id: "test-grove".to_string(),
+        };
+        // Should not error even though the directory doesn't exist
+        mgr.remove_grove().unwrap();
     }
 
     #[test]

@@ -180,6 +180,94 @@ fn env_output_format_parseable() {
 }
 
 // ---------------------------------------------------------------------------
+// Clean command tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn clean_removes_data_directory() {
+    let grove = TestGrove::new();
+
+    // Start and stop postgres to create data
+    grove.cmd().args(["up", "postgres"]).assert().success();
+    grove.cmd().arg("down").assert().success();
+
+    // Verify data dir exists after down
+    let data_dir = grove.store_path().join("data").join("postgres");
+    assert!(data_dir.exists(), "data directory should exist after down");
+
+    // Clean should remove it
+    grove.cmd().arg("clean").assert().success();
+
+    let store_path = grove.store_path();
+    assert!(
+        !store_path.exists(),
+        "store directory should be removed after clean: {store_path:?}"
+    );
+}
+
+#[tokio::test]
+async fn clean_stops_running_services_and_removes_data() {
+    let grove = TestGrove::new();
+
+    // Start postgres
+    grove.cmd().args(["up", "postgres"]).assert().success();
+
+    // Verify it's running
+    let status_out = grove.cmd().arg("status").assert().success();
+    let status_stdout = String::from_utf8(status_out.get_output().stdout.clone()).unwrap();
+    assert!(status_stdout.to_lowercase().contains("running"));
+
+    // Get container info before clean
+    let docker = connect_docker().expect("Docker must be available");
+    let prefix = format!("grov-{}-postgres", grove.grove_prefix);
+    let filters: HashMap<String, Vec<String>> = [("name".to_string(), vec![prefix.clone()])].into();
+    let opts = ListContainersOptions {
+        filters,
+        ..Default::default()
+    };
+    let containers_before = docker
+        .list_containers(Some(opts))
+        .await
+        .expect("list containers");
+    assert_eq!(containers_before.len(), 1, "container should be running");
+
+    // Clean should stop services and remove data
+    grove.cmd().arg("clean").assert().success();
+
+    // Verify container is gone
+    let filters: HashMap<String, Vec<String>> = [("name".to_string(), vec![prefix.clone()])].into();
+    let opts = ListContainersOptions {
+        all: true,
+        filters,
+        ..Default::default()
+    };
+    let containers_after = docker
+        .list_containers(Some(opts))
+        .await
+        .expect("list containers");
+    assert_eq!(
+        containers_after.len(),
+        0,
+        "container should be removed after clean"
+    );
+
+    // Verify store directory is gone
+    let store_path = grove.store_path();
+    assert!(
+        !store_path.exists(),
+        "store directory should be removed after clean"
+    );
+}
+
+#[test]
+fn clean_succeeds_with_no_services() {
+    let grove = TestGrove::new();
+
+    // Clean with nothing running should succeed
+    grove.cmd().arg("clean").assert().success();
+}
+
+// ---------------------------------------------------------------------------
 // T-026: Cross-grove isolation
 // ---------------------------------------------------------------------------
 
