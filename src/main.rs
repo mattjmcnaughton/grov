@@ -4,10 +4,11 @@ use std::sync::atomic::AtomicBool;
 
 use clap::Parser;
 use grov::GrovError;
-use grov::backend::Backend;
 use grov::backend::docker::DockerBackend;
 use grov::backend::native::NativeBackend;
-use grov::cli::{Cli, Commands};
+use grov::cli::Cli;
+use grov::cli::Commands;
+use grov::cli::commands::dispatch;
 use grov::orchestration::Orchestrator;
 use grov::orchestration::grove;
 use grov::storage::StateManager;
@@ -27,60 +28,6 @@ fn init_tracing(verbosity: u8) {
         .with_writer(std::io::stderr)
         .with_env_filter(filter)
         .init();
-}
-
-async fn dispatch<B: Backend>(
-    orchestrator: Orchestrator<B>,
-    command: Commands,
-) -> Result<(), GrovError> {
-    match command {
-        Commands::Install { services } => {
-            orchestrator.install(&services).await?;
-        }
-        Commands::Up { services } => {
-            orchestrator.up(&services).await?;
-        }
-        Commands::Down { services } => {
-            orchestrator.down(services.as_deref()).await?;
-        }
-        Commands::Env => {
-            let entries = orchestrator.env().await?;
-            for entry in &entries {
-                println!("{}={}", entry.key, entry.value);
-            }
-        }
-        Commands::Status => {
-            let statuses = orchestrator.status().await?;
-            if statuses.is_empty() {
-                println!("No running services.");
-            } else {
-                let name_w = statuses.iter().map(|s| s.name.len()).max().unwrap().max(7);
-                let backend_w = statuses
-                    .iter()
-                    .map(|s| s.backend.len())
-                    .max()
-                    .unwrap()
-                    .max(7);
-                let status_w = statuses
-                    .iter()
-                    .map(|s| s.status.to_string().len())
-                    .max()
-                    .unwrap()
-                    .max(6);
-                println!(
-                    "{:<name_w$}  {:<backend_w$}  {:<status_w$}  PORT",
-                    "SERVICE", "BACKEND", "STATUS"
-                );
-                for s in &statuses {
-                    println!(
-                        "{:<name_w$}  {:<backend_w$}  {:<status_w$}  {}",
-                        s.name, s.backend, s.status, s.port
-                    );
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 async fn run(command: Commands) -> Result<(), GrovError> {
