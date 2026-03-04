@@ -352,12 +352,4 @@ mod tests {
         let name = DockerBackend::container_name("abcd", "minio");
         assert_eq!(name, "grov-abcd-minio");
     }
-
-    #[test]
-    fn backend_type_is_docker() {
-        // DockerBackend::new() requires Docker, so we can only test
-        // the container_name helper and type name string here.
-        // Full behavior is covered by integration tests.
-        assert_eq!("docker", "docker");
-    }
 }
