@@ -277,6 +277,15 @@ impl<B: Backend> Orchestrator<B> {
         Ok(())
     }
 
+    pub async fn clean(&self) -> Result<(), GrovError> {
+        // Stop any running services first
+        self.down(None).await?;
+        info!("removing grove data");
+        self.state_manager.remove_grove()?;
+        info!("grove data removed");
+        Ok(())
+    }
+
     pub async fn env(&self) -> Result<Vec<EnvEntry>, GrovError> {
         let state = self.state_manager.load_state()?;
         if state.services.is_empty() {
@@ -697,6 +706,44 @@ mod tests {
         // State is empty
         let state = orch.state_manager.load_state().unwrap();
         assert!(state.services.is_empty());
+    }
+
+    // --- Tests: clean ---
+
+    #[tokio::test]
+    async fn clean_removes_store_directory() {
+        let (_tmp, mgr) = temp_state_manager();
+        mgr.ensure_data_dir("postgres").unwrap();
+        let store_path = mgr.store_path().clone();
+        assert!(store_path.exists());
+
+        let orch = make_orchestrator(MockBackend::new(), mgr);
+        orch.clean().await.unwrap();
+
+        assert!(!store_path.exists(), "store directory should be removed");
+    }
+
+    #[tokio::test]
+    async fn clean_stops_running_services_first() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "postgres", 55555);
+
+        let backend = MockBackend::new();
+        let orch = make_orchestrator(backend.clone(), mgr);
+        orch.clean().await.unwrap();
+
+        // Backend.stop was called
+        let stopped = backend.stopped.lock().unwrap();
+        assert_eq!(stopped.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn clean_succeeds_with_no_services() {
+        let (_tmp, mgr) = temp_state_manager();
+        let store_path = mgr.store_path().clone();
+        let orch = make_orchestrator(MockBackend::new(), mgr);
+        orch.clean().await.unwrap();
+        assert!(!store_path.exists());
     }
 
     // --- Tests: conversions ---

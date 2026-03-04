@@ -13,6 +13,7 @@ pub async fn dispatch<B: Backend>(
         Commands::Down { services } => down(orchestrator, services.as_deref()).await,
         Commands::Env => env(orchestrator).await,
         Commands::Status => status(orchestrator).await,
+        Commands::Clean => clean(orchestrator).await,
     }
 }
 
@@ -45,6 +46,11 @@ async fn env<B: Backend>(orchestrator: Orchestrator<B>) -> Result<(), GrovError>
     for entry in &entries {
         println!("{}={}", entry.key, entry.value);
     }
+    Ok(())
+}
+
+async fn clean<B: Backend>(orchestrator: Orchestrator<B>) -> Result<(), GrovError> {
+    orchestrator.clean().await?;
     Ok(())
 }
 

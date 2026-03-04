@@ -37,6 +37,8 @@ pub enum Commands {
     Env,
     /// Show status of services for the current grove
     Status,
+    /// Remove persisted data for the current grove
+    Clean,
 }
 
 #[cfg(test)]
@@ -97,6 +99,12 @@ mod tests {
     fn parse_status() {
         let cli = Cli::parse_from(["grov", "status"]);
         assert!(matches!(cli.command, Commands::Status));
+    }
+
+    #[test]
+    fn parse_clean() {
+        let cli = Cli::parse_from(["grov", "clean"]);
+        assert!(matches!(cli.command, Commands::Clean));
     }
 
     #[test]
