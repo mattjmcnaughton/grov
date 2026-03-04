@@ -192,6 +192,9 @@ impl<B: Backend> Orchestrator<B> {
                 resolved_env,
             };
 
+            // Ensure image/binary is available (auto-install)
+            self.backend.install(service).await?;
+
             // Start the service
             info!(service = name, port, "starting service");
             let handle = self.backend.start(service, &resolved).await?;

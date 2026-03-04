@@ -49,10 +49,6 @@ jobs:
             artifact_name: grov
             asset_name: grov-linux-x86_64
           - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact_name: grov
-            asset_name: grov-macos-x86_64
-          - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: grov
             asset_name: grov-macos-aarch64
