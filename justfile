@@ -22,7 +22,7 @@ build-test-native:
 
 # Run native backend integration tests in a Linux container
 test-native: build-test-native
-    docker run --rm -v {{justfile_directory()}}:/app -w /app grov-test-native \
+    docker run --rm -e CARGO_TARGET_DIR=/tmp/cargo-target -v {{justfile_directory()}}:/app -w /app grov-test-native \
         cargo test --test native_backend --features native-integration-tests
 
 # Expensive gate: gate + integration/e2e tests
@@ -39,5 +39,5 @@ run *ARGS: build
 
 # Run grov with the native backend inside the Linux test container (args passed through)
 run-native *ARGS: build-test-native
-    docker run --rm -e GROV_BACKEND=native -v {{justfile_directory()}}:/app -w /app grov-test-native \
+    docker run --rm -e GROV_BACKEND=native -e CARGO_TARGET_DIR=/tmp/cargo-target -v {{justfile_directory()}}:/app -w /app grov-test-native \
         cargo run -- {{ARGS}}
