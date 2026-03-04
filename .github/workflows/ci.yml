@@ -26,10 +26,6 @@ jobs:
             runner: macos-latest
             docker-tests: false
             native-tests: false
-          - name: macOS x86_64
-            runner: macos-13
-            docker-tests: false
-            native-tests: false
 
     steps:
       - uses: actions/checkout@v4
