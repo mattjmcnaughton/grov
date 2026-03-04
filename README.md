@@ -18,10 +18,17 @@ Each worktree maps to a **grove** — an isolated environment identified by a ha
 
 ---
 
+## Install
+
+```bash
+brew install mattjmcnaughton/tap/grov
+```
+
+---
+
 ## Quick Start
 
 ```bash
-cargo build
 grov install postgres minio    # pull Docker images
 grov up postgres minio         # start services for this worktree
 eval $(grov env)               # load connection env vars
