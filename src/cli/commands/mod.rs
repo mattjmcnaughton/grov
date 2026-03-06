@@ -55,6 +55,8 @@ async fn clean<B: Backend>(orchestrator: Orchestrator<B>) -> Result<(), GrovErro
 }
 
 async fn status<B: Backend>(orchestrator: Orchestrator<B>) -> Result<(), GrovError> {
+    println!("Grove: {}", orchestrator.store_path().display());
+    println!();
     let statuses = orchestrator.status().await?;
     if statuses.is_empty() {
         println!("No running services.");
