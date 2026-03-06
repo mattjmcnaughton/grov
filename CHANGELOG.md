@@ -1,3 +1,13 @@
+# [1.1.0](https://github.com/mattjmcnaughton/grov/compare/v1.0.0...v1.1.0) (2026-03-06)
+
+
+### Features
+
+* add `grov clean` command to remove grove data ([a33ace0](https://github.com/mattjmcnaughton/grov/commit/a33ace00d8e170bfefab53469ba6a360ec129a61))
+* **cli:** add --all, --orphans, and --dry-run flags to `grov clean` ([c9a876d](https://github.com/mattjmcnaughton/grov/commit/c9a876d636c3d0a9ac5a51753142d714de8bb44e))
+* **cli:** show grove path in status output ([72c3feb](https://github.com/mattjmcnaughton/grov/commit/72c3febb7c752b1467136375799e14719320458b))
+* **storage:** store worktree path in state.json ([53f46ce](https://github.com/mattjmcnaughton/grov/commit/53f46ce5ceefa91c7ec21a8f31f370452304bdc4))
+
 # 1.0.0 (2026-03-04)
 
 
