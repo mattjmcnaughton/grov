@@ -104,6 +104,10 @@ impl<B: Backend> Orchestrator<B> {
         }
     }
 
+    pub fn store_path(&self) -> &std::path::PathBuf {
+        self.state_manager.store_path()
+    }
+
     pub fn find_service(&self, name: &str) -> Result<&dyn Service, GrovError> {
         self.services
             .iter()
