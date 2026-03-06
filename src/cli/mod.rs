@@ -38,7 +38,17 @@ pub enum Commands {
     /// Show status of services for the current grove
     Status,
     /// Remove persisted data for the current grove
-    Clean,
+    Clean {
+        /// Clean all groves system-wide
+        #[arg(long, conflicts_with = "orphans")]
+        all: bool,
+        /// Clean only orphaned groves (worktree directory no longer exists)
+        #[arg(long, conflicts_with = "all")]
+        orphans: bool,
+        /// Show what would be cleaned without actually doing it
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[cfg(test)]
@@ -104,7 +114,85 @@ mod tests {
     #[test]
     fn parse_clean() {
         let cli = Cli::parse_from(["grov", "clean"]);
-        assert!(matches!(cli.command, Commands::Clean));
+        assert!(matches!(
+            cli.command,
+            Commands::Clean {
+                all: false,
+                orphans: false,
+                dry_run: false,
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_clean_all() {
+        let cli = Cli::parse_from(["grov", "clean", "--all"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Clean {
+                all: true,
+                orphans: false,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_clean_orphans() {
+        let cli = Cli::parse_from(["grov", "clean", "--orphans"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Clean {
+                all: false,
+                orphans: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_clean_all_and_orphans_fails() {
+        let result = Cli::try_parse_from(["grov", "clean", "--all", "--orphans"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_clean_dry_run() {
+        let cli = Cli::parse_from(["grov", "clean", "--dry-run"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Clean {
+                all: false,
+                orphans: false,
+                dry_run: true,
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_clean_all_dry_run() {
+        let cli = Cli::parse_from(["grov", "clean", "--all", "--dry-run"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Clean {
+                all: true,
+                dry_run: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_clean_orphans_dry_run() {
+        let cli = Cli::parse_from(["grov", "clean", "--orphans", "--dry-run"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Clean {
+                orphans: true,
+                dry_run: true,
+                ..
+            }
+        ));
     }
 
     #[test]
