@@ -31,10 +31,13 @@ fn init_tracing(verbosity: u8) {
 }
 
 async fn run(command: Commands) -> Result<(), GrovError> {
-    let grove_id = grove::resolve().map_err(|e| GrovError::Internal(e.to_string()))?;
+    let cwd = std::env::current_dir()
+        .map_err(|e| GrovError::Internal(format!("failed to determine current directory: {e}")))?;
+    let grove_id = grove::resolve_path(&cwd);
     tracing::debug!(grove_id = %grove_id, "resolved grove ID");
 
-    let state_manager = StateManager::new(&grove_id)?;
+    let worktree_path = cwd.to_string_lossy();
+    let state_manager = StateManager::new(&grove_id, &worktree_path)?;
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_flag = shutdown.clone();

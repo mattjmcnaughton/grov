@@ -5,13 +5,16 @@ use std::collections::HashMap;
 pub struct GroveState {
     pub grove_id: String,
     #[serde(default)]
+    pub worktree_path: String,
+    #[serde(default)]
     pub services: HashMap<String, ServiceState>,
 }
 
 impl GroveState {
-    pub fn new(grove_id: String) -> Self {
+    pub fn new(grove_id: String, worktree_path: String) -> Self {
         Self {
             grove_id,
+            worktree_path,
             services: HashMap::new(),
         }
     }
@@ -62,6 +65,7 @@ mod tests {
         );
         GroveState {
             grove_id: "a1b2c3d4e5f6g7h8".to_string(),
+            worktree_path: "/home/user/project".to_string(),
             services,
         }
     }
@@ -89,7 +93,7 @@ mod tests {
 
     #[test]
     fn empty_state_roundtrip() {
-        let state = GroveState::new("testgrove".to_string());
+        let state = GroveState::new("testgrove".to_string(), "/test/path".to_string());
         let json = serde_json::to_string(&state).unwrap();
         let deserialized: GroveState = serde_json::from_str(&json).unwrap();
         assert_eq!(state, deserialized);

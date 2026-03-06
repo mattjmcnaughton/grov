@@ -27,10 +27,11 @@ pub enum StorageError {
 pub struct StateManager {
     store_path: PathBuf,
     grove_id: String,
+    worktree_path: String,
 }
 
 impl StateManager {
-    pub fn new(grove_id: &str) -> Result<Self, StorageError> {
+    pub fn new(grove_id: &str, worktree_path: &str) -> Result<Self, StorageError> {
         let base = directories::BaseDirs::new().ok_or_else(|| {
             StorageError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -42,26 +43,34 @@ impl StateManager {
             .join(GROV_DIR)
             .join(STORE_DIR)
             .join(grove_id);
-        fs::create_dir_all(&store_path)?;
         Ok(Self {
             store_path,
             grove_id: grove_id.to_string(),
+            worktree_path: worktree_path.to_string(),
         })
     }
 
     #[cfg(test)]
     pub(crate) fn with_path(store_path: PathBuf, grove_id: &str) -> Result<Self, StorageError> {
-        fs::create_dir_all(&store_path)?;
         Ok(Self {
             store_path,
             grove_id: grove_id.to_string(),
+            worktree_path: "/test/worktree".to_string(),
         })
+    }
+
+    fn ensure_store_dir(&self) -> Result<(), StorageError> {
+        fs::create_dir_all(&self.store_path)?;
+        Ok(())
     }
 
     pub fn load_state(&self) -> Result<GroveState, StorageError> {
         let state_file = self.store_path.join(STATE_FILE);
         if !state_file.exists() {
-            return Ok(GroveState::new(self.grove_id.clone()));
+            return Ok(GroveState::new(
+                self.grove_id.clone(),
+                self.worktree_path.clone(),
+            ));
         }
         let contents = fs::read_to_string(&state_file)?;
         let state = serde_json::from_str(&contents)?;
@@ -69,6 +78,7 @@ impl StateManager {
     }
 
     pub fn save_state(&self, state: &GroveState) -> Result<(), StorageError> {
+        self.ensure_store_dir()?;
         let state_file = self.store_path.join(STATE_FILE);
         let tmp_file = self.store_path.join(STATE_TMP_FILE);
         let contents = serde_json::to_string_pretty(state)?;
@@ -81,6 +91,7 @@ impl StateManager {
     where
         F: FnOnce(&mut GroveState) -> Result<T, StorageError>,
     {
+        self.ensure_store_dir()?;
         let lock_path = self.store_path.join(STATE_LOCK_FILE);
         let lock_file = fs::File::create(&lock_path)?;
         lock_file
@@ -100,6 +111,7 @@ impl StateManager {
     }
 
     pub fn ensure_data_dir(&self, service_name: &str) -> Result<PathBuf, StorageError> {
+        self.ensure_store_dir()?;
         let path = self.data_dir(service_name);
         fs::create_dir_all(&path)?;
         Ok(path)
@@ -140,6 +152,24 @@ mod tests {
     }
 
     #[test]
+    fn construction_does_not_create_store_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("new-grove");
+        let mgr = StateManager::with_path(store.clone(), "test-grove").unwrap();
+        assert!(
+            !store.exists(),
+            "store dir should not be created on construction"
+        );
+        // load_state (read-only) should also not create it
+        let state = mgr.load_state().unwrap();
+        assert!(
+            !store.exists(),
+            "store dir should not be created by load_state"
+        );
+        assert!(state.services.is_empty());
+    }
+
+    #[test]
     fn load_state_returns_empty_when_no_file() {
         let tmp = tempfile::tempdir().unwrap();
         let mgr = StateManager::with_path(tmp.path().to_path_buf(), "test-grove").unwrap();
@@ -152,7 +182,7 @@ mod tests {
     fn save_and_load_roundtrip() {
         let tmp = tempfile::tempdir().unwrap();
         let mgr = StateManager::with_path(tmp.path().to_path_buf(), "test-grove").unwrap();
-        let mut state = GroveState::new("test-grove".to_string());
+        let mut state = GroveState::new("test-grove".to_string(), "/test/worktree".to_string());
         state.services.insert(
             "postgres".to_string(),
             ServiceState {
@@ -174,7 +204,7 @@ mod tests {
     fn atomic_write_produces_state_file() {
         let tmp = tempfile::tempdir().unwrap();
         let mgr = StateManager::with_path(tmp.path().to_path_buf(), "test-grove").unwrap();
-        let state = GroveState::new("test-grove".to_string());
+        let state = GroveState::new("test-grove".to_string(), "/test/worktree".to_string());
         mgr.save_state(&state).unwrap();
         assert!(tmp.path().join(STATE_FILE).exists());
         // Temp file should not remain
@@ -274,6 +304,7 @@ mod tests {
         let mgr = StateManager {
             store_path: store.clone(),
             grove_id: "test-grove".to_string(),
+            worktree_path: "/test/worktree".to_string(),
         };
         // Should not error even though the directory doesn't exist
         mgr.remove_grove().unwrap();
