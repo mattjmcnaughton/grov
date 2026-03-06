@@ -75,6 +75,17 @@ Print environment variables for running services as `KEY=VALUE` lines.
 eval $(grov env)               # load into current shell
 ```
 
+### `grov clean [--all] [--orphans] [--dry-run]`
+
+Remove grove data directories from `~/.grov/store/`. By default, removes data for the current worktree.
+
+```bash
+grov clean                     # remove current grove's data
+grov clean --orphans           # remove data for worktrees that no longer exist
+grov clean --all               # remove all grove data
+grov clean --dry-run           # preview what would be removed
+```
+
 ### `grov status`
 
 Show service status for the current grove.

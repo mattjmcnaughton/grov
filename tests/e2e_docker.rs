@@ -187,12 +187,13 @@ fn env_output_format_parseable() {
 fn clean_removes_data_directory() {
     let grove = TestGrove::new();
 
-    // Start and stop postgres to create data
-    grove.cmd().args(["up", "postgres"]).assert().success();
+    // Start and stop minio to create data
+    // (minio doesn't create root-owned files like postgres does)
+    grove.cmd().args(["up", "minio"]).assert().success();
     grove.cmd().arg("down").assert().success();
 
     // Verify data dir exists after down
-    let data_dir = grove.store_path().join("data").join("postgres");
+    let data_dir = grove.store_path().join("data").join("minio");
     assert!(data_dir.exists(), "data directory should exist after down");
 
     // Clean should remove it
@@ -209,8 +210,8 @@ fn clean_removes_data_directory() {
 async fn clean_stops_running_services_and_removes_data() {
     let grove = TestGrove::new();
 
-    // Start postgres
-    grove.cmd().args(["up", "postgres"]).assert().success();
+    // Start minio (avoids root-owned files that postgres creates)
+    grove.cmd().args(["up", "minio"]).assert().success();
 
     // Verify it's running
     let status_out = grove.cmd().arg("status").assert().success();
@@ -219,7 +220,7 @@ async fn clean_stops_running_services_and_removes_data() {
 
     // Get container info before clean
     let docker = connect_docker().expect("Docker must be available");
-    let prefix = format!("grov-{}-postgres", grove.grove_prefix);
+    let prefix = format!("grov-{}-minio", grove.grove_prefix);
     let filters: HashMap<String, Vec<String>> = [("name".to_string(), vec![prefix.clone()])].into();
     let opts = ListContainersOptions {
         filters,
