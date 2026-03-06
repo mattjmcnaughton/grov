@@ -4,6 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use fs2::FileExt;
+use tracing::warn;
 
 use state::GroveState;
 
@@ -130,6 +131,55 @@ impl StateManager {
             Err(e) => Err(StorageError::Io(e)),
         }
     }
+}
+
+pub struct GroveInfo {
+    pub store_path: PathBuf,
+    pub state: GroveState,
+}
+
+pub fn list_all_groves() -> Result<Vec<GroveInfo>, StorageError> {
+    let base = directories::BaseDirs::new().ok_or_else(|| {
+        StorageError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not determine home directory",
+        ))
+    })?;
+    let store_dir = base.home_dir().join(GROV_DIR).join(STORE_DIR);
+    list_all_groves_in(&store_dir)
+}
+
+fn list_all_groves_in(store_dir: &std::path::Path) -> Result<Vec<GroveInfo>, StorageError> {
+    if !store_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut groves = Vec::new();
+    for entry in fs::read_dir(store_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let state_file = path.join(STATE_FILE);
+        let contents = match fs::read_to_string(&state_file) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!(path = %state_file.display(), error = %e, "skipping grove with unreadable state");
+                continue;
+            }
+        };
+        match serde_json::from_str::<GroveState>(&contents) {
+            Ok(state) => groves.push(GroveInfo {
+                store_path: path,
+                state,
+            }),
+            Err(e) => {
+                warn!(path = %state_file.display(), error = %e, "skipping grove with corrupt state");
+            }
+        }
+    }
+    Ok(groves)
 }
 
 #[cfg(test)]
@@ -308,6 +358,70 @@ mod tests {
         };
         // Should not error even though the directory doesn't exist
         mgr.remove_grove().unwrap();
+    }
+
+    #[test]
+    fn list_all_groves_in_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let groves = list_all_groves_in(tmp.path()).unwrap();
+        assert!(groves.is_empty());
+    }
+
+    #[test]
+    fn list_all_groves_in_nonexistent_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nonexistent = tmp.path().join("does-not-exist");
+        let groves = list_all_groves_in(&nonexistent).unwrap();
+        assert!(groves.is_empty());
+    }
+
+    #[test]
+    fn list_all_groves_in_with_multiple_groves() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Create two grove subdirectories with valid state.json
+        for id in &["grove-a", "grove-b"] {
+            let grove_dir = tmp.path().join(id);
+            fs::create_dir_all(&grove_dir).unwrap();
+            let state = GroveState::new(id.to_string(), format!("/worktree/{id}"));
+            let json = serde_json::to_string(&state).unwrap();
+            fs::write(grove_dir.join(STATE_FILE), json).unwrap();
+        }
+
+        let groves = list_all_groves_in(tmp.path()).unwrap();
+        assert_eq!(groves.len(), 2);
+
+        let mut ids: Vec<&str> = groves.iter().map(|g| g.state.grove_id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["grove-a", "grove-b"]);
+    }
+
+    #[test]
+    fn list_all_groves_in_skips_missing_state() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Valid grove
+        let good = tmp.path().join("good");
+        fs::create_dir_all(&good).unwrap();
+        let state = GroveState::new("good".to_string(), "/worktree/good".to_string());
+        fs::write(
+            good.join(STATE_FILE),
+            serde_json::to_string(&state).unwrap(),
+        )
+        .unwrap();
+
+        // Grove dir with no state.json
+        let bad = tmp.path().join("bad");
+        fs::create_dir_all(&bad).unwrap();
+
+        // Grove dir with corrupt state.json
+        let corrupt = tmp.path().join("corrupt");
+        fs::create_dir_all(&corrupt).unwrap();
+        fs::write(corrupt.join(STATE_FILE), "not json").unwrap();
+
+        let groves = list_all_groves_in(tmp.path()).unwrap();
+        assert_eq!(groves.len(), 1);
+        assert_eq!(groves[0].state.grove_id, "good");
     }
 
     #[test]

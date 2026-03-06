@@ -56,6 +56,20 @@ fn render_service_env(service: &dyn Service, port: u16) -> anyhow::Result<HashMa
     Ok(rendered)
 }
 
+// --- Grove-level helpers ---
+
+pub async fn stop_grove_services<B: Backend>(
+    backend: &B,
+    state: &crate::storage::state::GroveState,
+) {
+    for (name, svc_state) in &state.services {
+        let handle: ServiceHandle = svc_state.handle.clone().into();
+        if let Err(e) = backend.stop(&handle).await {
+            warn!(service = name.as_str(), error = %e, "failed to stop service during grove cleanup");
+        }
+    }
+}
+
 // --- Return types ---
 
 pub struct EnvEntry {
@@ -106,6 +120,10 @@ impl<B: Backend> Orchestrator<B> {
 
     pub fn store_path(&self) -> &std::path::PathBuf {
         self.state_manager.store_path()
+    }
+
+    pub fn backend(&self) -> &B {
+        &self.backend
     }
 
     pub fn find_service(&self, name: &str) -> Result<&dyn Service, GrovError> {
@@ -954,5 +972,119 @@ mod tests {
     fn service_run_state_display() {
         assert_eq!(ServiceRunState::Running.to_string(), "running");
         assert_eq!(ServiceRunState::Stopped.to_string(), "stopped");
+    }
+
+    // --- Tests: stop_grove_services ---
+
+    #[tokio::test]
+    async fn stop_grove_services_stops_all_handles() {
+        let backend = MockBackend::new();
+        let mut state =
+            crate::storage::state::GroveState::new("test".to_string(), "/test".to_string());
+        state.services.insert(
+            "postgres".to_string(),
+            ServiceState {
+                service_name: "postgres".to_string(),
+                port: 54321,
+                handle: ServiceHandleState::Docker {
+                    container_id: "abc".to_string(),
+                },
+                backend_type: "mock".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        );
+        state.services.insert(
+            "minio".to_string(),
+            ServiceState {
+                service_name: "minio".to_string(),
+                port: 9001,
+                handle: ServiceHandleState::Docker {
+                    container_id: "def".to_string(),
+                },
+                backend_type: "mock".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        );
+
+        stop_grove_services(&backend, &state).await;
+
+        let stopped = backend.stopped.lock().unwrap();
+        assert_eq!(stopped.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn stop_grove_services_continues_past_errors() {
+        // Create a backend that fails on stop
+        let backend = FailingStopBackend {
+            stop_called: Arc::new(Mutex::new(0)),
+        };
+        let mut state =
+            crate::storage::state::GroveState::new("test".to_string(), "/test".to_string());
+        state.services.insert(
+            "postgres".to_string(),
+            ServiceState {
+                service_name: "postgres".to_string(),
+                port: 54321,
+                handle: ServiceHandleState::Docker {
+                    container_id: "abc".to_string(),
+                },
+                backend_type: "mock".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        );
+        state.services.insert(
+            "minio".to_string(),
+            ServiceState {
+                service_name: "minio".to_string(),
+                port: 9001,
+                handle: ServiceHandleState::Docker {
+                    container_id: "def".to_string(),
+                },
+                backend_type: "mock".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        );
+
+        stop_grove_services(&backend, &state).await;
+
+        // Both services were attempted despite errors
+        let count = *backend.stop_called.lock().unwrap();
+        assert_eq!(count, 2);
+    }
+
+    struct FailingStopBackend {
+        stop_called: Arc<Mutex<u32>>,
+    }
+
+    impl Backend for FailingStopBackend {
+        async fn install(&self, _service: &dyn Service) -> Result<(), BackendError> {
+            Ok(())
+        }
+
+        async fn start(
+            &self,
+            _service: &dyn Service,
+            _resolved: &ResolvedService,
+        ) -> Result<ServiceHandle, BackendError> {
+            Ok(ServiceHandle::Docker {
+                container_id: "x".to_string(),
+            })
+        }
+
+        async fn stop(&self, _handle: &ServiceHandle) -> Result<(), BackendError> {
+            *self.stop_called.lock().unwrap() += 1;
+            Err(BackendError::StopFailed {
+                service: "test".to_string(),
+                reason: "mock failure".to_string(),
+            })
+        }
+
+        async fn is_running(&self, _handle: &ServiceHandle) -> Result<bool, BackendError> {
+            Ok(false)
+        }
+
+        fn backend_type(&self) -> &'static str {
+            "failing-mock"
+        }
     }
 }
