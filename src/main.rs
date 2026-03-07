@@ -50,13 +50,39 @@ async fn run(command: Commands) -> Result<(), GrovError> {
     let backend_name = std::env::var("GROV_BACKEND").unwrap_or_else(|_| "docker".to_string());
     match backend_name.as_str() {
         "native" => {
-            let orchestrator = Orchestrator::new(NativeBackend, state_manager, shutdown);
+            let mut orchestrator = Orchestrator::new(NativeBackend, state_manager, shutdown);
+            register_compose_services(&cwd, &mut orchestrator);
             dispatch(orchestrator, command).await
         }
         _ => {
             let backend = DockerBackend::new().await?;
-            let orchestrator = Orchestrator::new(backend, state_manager, shutdown);
+            let mut orchestrator = Orchestrator::new(backend, state_manager, shutdown);
+            register_compose_services(&cwd, &mut orchestrator);
             dispatch(orchestrator, command).await
+        }
+    }
+}
+
+fn register_compose_services<B: grov::backend::Backend>(
+    cwd: &std::path::Path,
+    orchestrator: &mut Orchestrator<B>,
+) {
+    use grov::compose;
+
+    if let Some(compose_path) = compose::find_compose_file(cwd) {
+        tracing::debug!(path = %compose_path.display(), "found compose file");
+        match compose::parse_file(&compose_path) {
+            Ok(compose_file) => {
+                let (services, _warnings) = compose::resolve_compose_services(&compose_file);
+                if !services.is_empty() {
+                    let names: Vec<&str> = services.iter().map(|s| s.name()).collect();
+                    tracing::info!(services = ?names, "registered compose services");
+                    orchestrator.add_services(services);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("failed to parse compose file: {e}");
+            }
         }
     }
 }

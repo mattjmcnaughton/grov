@@ -24,8 +24,7 @@ pub enum Commands {
     },
     /// Start services for the current grove
     Up {
-        /// Service names to start
-        #[arg(required = true)]
+        /// Service names to start (reads docker-compose.yml if omitted)
         services: Vec<String>,
     },
     /// Stop services for the current grove
@@ -211,8 +210,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_up_requires_services() {
-        let result = Cli::try_parse_from(["grov", "up"]);
-        assert!(result.is_err());
+    fn parse_up_with_no_services() {
+        let cli = Cli::parse_from(["grov", "up"]);
+        match cli.command {
+            Commands::Up { ref services } => {
+                assert!(services.is_empty());
+            }
+            _ => panic!("expected Up command"),
+        }
     }
 }
