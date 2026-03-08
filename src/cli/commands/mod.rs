@@ -13,7 +13,13 @@ pub async fn dispatch<B: Backend>(
 ) -> Result<(), GrovError> {
     match command {
         Commands::Install { services } => install(orchestrator, &services).await,
-        Commands::Up { services } => up(orchestrator, &services).await,
+        Commands::Up { services } => {
+            if services.is_empty() {
+                up_from_compose(orchestrator).await
+            } else {
+                up(orchestrator, &services).await
+            }
+        }
         Commands::Down { services } => down(orchestrator, services.as_deref()).await,
         Commands::Env => env(orchestrator).await,
         Commands::Status => status(orchestrator).await,
@@ -46,6 +52,40 @@ async fn up<B: Backend>(
     services: &[String],
 ) -> Result<(), GrovError> {
     orchestrator.up(services).await?;
+    Ok(())
+}
+
+async fn up_from_compose<B: Backend>(orchestrator: Orchestrator<B>) -> Result<(), GrovError> {
+    // Get compose service names from the orchestrator's registered services
+    // (compose services are registered by main.rs before dispatch)
+    let all_names = orchestrator.service_names();
+
+    // Filter to only compose-registered services (not builtins)
+    // by checking which names aren't in the builtin set
+    let builtin_names: std::collections::HashSet<String> =
+        crate::orchestration::services::builtin_services()
+            .iter()
+            .map(|s| s.name().to_string())
+            .collect();
+
+    let compose_names: Vec<String> = all_names
+        .into_iter()
+        .filter(|n| !builtin_names.contains(n))
+        .collect();
+
+    if compose_names.is_empty() {
+        return Err(GrovError::Internal(
+            "no services specified and no docker-compose.yml found (or no supported services in it). \
+             Specify services explicitly: grov up postgres minio"
+                .to_string(),
+        ));
+    }
+
+    info!(
+        services = ?compose_names,
+        "starting services from compose file"
+    );
+    orchestrator.up(&compose_names).await?;
     Ok(())
 }
 

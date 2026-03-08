@@ -118,6 +118,14 @@ impl<B: Backend> Orchestrator<B> {
         }
     }
 
+    pub fn add_services(&mut self, extra: Vec<Box<dyn Service>>) {
+        self.services.extend(extra);
+    }
+
+    pub fn service_names(&self) -> Vec<String> {
+        self.services.iter().map(|s| s.name().to_string()).collect()
+    }
+
     pub fn store_path(&self) -> &std::path::PathBuf {
         self.state_manager.store_path()
     }
@@ -1086,5 +1094,120 @@ mod tests {
         fn backend_type(&self) -> &'static str {
             "failing-mock"
         }
+    }
+
+    // --- Tests: add_services + compose integration ---
+
+    #[test]
+    fn add_services_extends_registry() {
+        let (_tmp, mgr) = temp_state_manager();
+        let mut orch = make_orchestrator(MockBackend::new(), mgr);
+
+        let yaml = r#"
+services:
+  mydb:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: custom
+      POSTGRES_DB: customdb
+"#;
+        let compose: crate::compose::ComposeFile = serde_yaml::from_str(yaml).unwrap();
+        let (services, warnings) = crate::compose::resolve_compose_services(&compose);
+        assert!(warnings.is_empty());
+        orch.add_services(services);
+
+        // Can find compose service by name
+        let svc = orch.find_service("mydb").unwrap();
+        assert_eq!(svc.name(), "mydb");
+        assert_eq!(svc.docker_image(), "postgres:16");
+
+        // Builtins still work
+        assert!(orch.find_service("postgres").is_ok());
+        assert!(orch.find_service("minio").is_ok());
+    }
+
+    #[test]
+    fn service_names_returns_all_registered() {
+        let (_tmp, mgr) = temp_state_manager();
+        let mut orch = make_orchestrator(MockBackend::new(), mgr);
+
+        let yaml = r#"
+services:
+  db:
+    image: postgres:16
+  storage:
+    image: minio/minio:latest
+"#;
+        let compose: crate::compose::ComposeFile = serde_yaml::from_str(yaml).unwrap();
+        let (services, _) = crate::compose::resolve_compose_services(&compose);
+        orch.add_services(services);
+
+        let mut names = orch.service_names();
+        names.sort();
+        assert_eq!(names, vec!["db", "minio", "postgres", "storage"]);
+    }
+
+    #[tokio::test]
+    async fn up_works_with_compose_service() {
+        let (_tmp, mgr) = temp_state_manager();
+        let backend = MockBackend::new().with_listener();
+        let mut orch = Orchestrator::new(backend.clone(), mgr, Arc::new(AtomicBool::new(false)));
+
+        let yaml = r#"
+services:
+  mydb:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: testdb
+"#;
+        let compose: crate::compose::ComposeFile = serde_yaml::from_str(yaml).unwrap();
+        let (services, _) = crate::compose::resolve_compose_services(&compose);
+        orch.add_services(services);
+
+        orch.up(&["mydb".to_string()]).await.unwrap();
+
+        let started = backend.started.lock().unwrap();
+        assert_eq!(*started, vec!["mydb"]);
+
+        let state = orch.state_manager.load_state().unwrap();
+        assert!(state.services.contains_key("mydb"));
+    }
+
+    #[tokio::test]
+    async fn env_works_with_compose_service() {
+        let (_tmp, mgr) = temp_state_manager();
+        seed_service_state(&mgr, "mydb", 54321);
+
+        let mut orch = make_orchestrator(MockBackend::new().with_is_running(true), mgr);
+
+        let yaml = r#"
+services:
+  mydb:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: testdb
+"#;
+        let compose: crate::compose::ComposeFile = serde_yaml::from_str(yaml).unwrap();
+        let (services, _) = crate::compose::resolve_compose_services(&compose);
+        orch.add_services(services);
+
+        let entries = orch.env().await.unwrap();
+        let find = |k: &str| {
+            entries
+                .iter()
+                .find(|e| e.key == k)
+                .map(|e| e.value.as_str())
+        };
+        // Verify compose env overrides are reflected in templates
+        assert_eq!(
+            find("DATABASE_URL"),
+            Some("postgresql://admin:secret@localhost:54321/testdb")
+        );
+        assert_eq!(find("PGUSER"), Some("admin"));
+        assert_eq!(find("PGDATABASE"), Some("testdb"));
     }
 }
